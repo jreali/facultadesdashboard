@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Detalle por Facultad</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root{
+      --azul-oscuro:#1c3247;
+      --azul-claro:#3c7aa0;
+      --naranja:#fc7e00;
+    }
+    body{
+      background: linear-gradient(120deg,var(--azul-claro) 0%, #fff 100%);
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: var(--azul-oscuro);
+      margin:0;
+      padding:22px;
+    }
+    .container{
+      max-width:1200px;
+      margin:0 auto;
+      background:#fff;
+      border-radius:12px;
+      box-shadow:0 6px 20px rgba(28,50,71,0.08);
+      padding:20px;
+    }
+    h2{ margin:0 0 12px 0; }
+    .detalle-combos{ width:100%; margin-bottom:12px; }
+    .detalle-combo-row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .combo-grande{ min-width:300px; max-width:720px; width:100%; padding:8px 12px; border:2px solid var(--azul-claro); border-radius:8px; font-size:1rem; }
+    .chart-block{ margin-top:12px; margin-bottom:12px; width:100%; }
+    .chart-wrapper{ width:100%; height:34vh; }
+    .chart-wrapper-radar{ width:100%; height:36vh; }
+    .chart-wrapper canvas{ width:100% !important; height:100% !important; display:block; }
+    table{ width:100%; border-collapse:collapse; margin-top:12px; }
+    th, td{ padding:8px 6px; border-bottom:1px solid #e6eef6; text-align:left; font-size:0.95rem; }
+    th{ background:var(--azul-claro); color:#fff; font-weight:700; padding:10px; }
+    @media (max-width:700px){
+      .chart-wrapper{ height:44vh; }
+      .chart-wrapper-radar{ height:48vh; }
+      .combo-grande{ min-width:140px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="detalle-section">
+      <h2>Detalle por Facultad</h2>
+
+      <div class="detalle-combos">
+        <div class="detalle-combo-row">
+          <label style="font-weight:600;">Selecciona facultad:</label>
+          <select id="facultadSelect" class="combo-grande"></select>
+        </div>
+      </div>
+
+      <div id="detalleFacultad"></div>
+    </section>
+  </div>
+
+  <script>
+    // Helper: divide un label largo en varias líneas (array de líneas)
+    function wrapLabel(label, maxLen = 18) {
+      if (!label || typeof label !== 'string') return [String(label)];
+      const words = label.split(' ');
+      const lines = [];
+      let current = '';
+      for (const w of words) {
+        if ((current + ' ' + w).trim().length <= maxLen) {
+          current = (current + ' ' + w).trim();
+        } else {
+          if (current) lines.push(current);
+          current = w;
+        }
+      }
+      if (current) lines.push(current);
+      return lines;
+    }
+
+    // Plugins to draw percentage labels in dark blue (#1c3247)
+    Chart.register({
+      id: 'valueLabelsFacultades',
+      afterDatasetsDraw(chart){
+        const { ctx, chartArea } = chart;
+        if (!chartArea) return;
+        chart.data.datasets.forEach((dataset, i) => {
+          chart.getDatasetMeta(i).data.forEach((el, j) => {
+            const value = dataset.data[j];
+            if (value === undefined || Number.isNaN(value)) return;
+            ctx.save();
+            ctx.font = "bold 13px Segoe UI, Arial";
+            ctx.fillStyle = "#1c3247";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "bottom";
+            if (chart.config.type === "bar") {
+              // el.x, el.y para barras
+              ctx.fillText(value.toFixed(2) + "%", el.x, el.y - 6);
+            }
+            ctx.restore();
+          });
+        });
+      }
+    });
+
+    Chart.register({
+      id: 'valueLabelsRadar',
+      afterDatasetsDraw(chart){
+        if (chart.config.type !== 'radar') return;
+        const { ctx } = chart;
+        chart.data.datasets.forEach((dataset) => {
+          chart.getDatasetMeta(0).data.forEach((point, j) => {
+            const value = dataset.data[j];
+            if (value === undefined || Number.isNaN(value)) return;
+            const angle = chart.scales.r.getIndexAngle(j);
+            const radius = chart.scales.r.getDistanceFromCenterForValue(value) + 18;
+            const x = chart.scales.r.xCenter + Math.cos(angle - Math.PI/2) * radius;
+            const y = chart.scales.r.yCenter + Math.sin(angle - Math.PI/2) * radius;
+            ctx.save();
+            ctx.font = "bold 13px Segoe UI, Arial";
+            ctx.fillStyle = "#1c3247";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(value.toFixed(1) + "%", x, y);
+            ctx.restore();
+          });
+        });
+      }
+    });
+
+    // Data and labels (kept from original)
+    const criterios_ajustados = [
+      "Comunicación institucional",
+      "Áreas verdes y recreación",
+      "Servicio de cafetería o bares",
+      "Prácticas preprofesionales / pasantías",
+      "Servicios estudiantiles (biblioteca, bienestar, psicología, becas)",
+      "Atención de coordinación/directores",
+      "Acceso a recursos tecnológicos",
+      "Infraestructura (aulas, laboratorios, talleres)",
+      "Calidad de la enseñanza"
+    ];
+
+    const datos = [
+      {
+        nombre: "Facultad de Ingeniería",
+        carreras: [
+          { nombre: "Industrial", total:79.0, criterios:[79.8,81.6,76.4,76.2,79.4,77.6,79.0,82.0,79.2] },
+          { nombre: "Software", total:79.8, criterios:[79.4,82.8,77.6,78.0,78.0,77.8,81.2,84.4,79.8] },
+          { nombre: "Alimentos", total:77.6, criterios:[80.0,86.6,72.4,76.6,82.4,81.6,75.0,81.6,80.8] },
+          { nombre: "Ambiental", total:79.6, criterios:[80.6,81.6,78.2,78.6,80.2,78.0,78.0,79.8,81.6] },
+          { nombre: "Arquitectura Sostenible", total:79.8, criterios:[80.8,86.6,75.0,81.6,82.4,76.6,72.4,86.6,80.8] },
+          { nombre: "Biotecnología", total:71.2, criterios:[72.0,75.4,74.0,69.8,72.6,76.7,71.4,86.6,71.2] },
+          { nombre: "TICS", total:82.4, criterios:[83.0,84.0,80.0,82.0,100.0,79.6,83.2,84.2,84.8] }
+        ]
+      },
+      {
+        nombre: "Facultad de Educación",
+        carreras: [
+          { nombre: "Educación en Modalidad Presencial", total:80.8, criterios:[79.6,80.0,78.4,81.6,81.6,81.6,81.0,80.4,80.4] },
+          { nombre: "Educación Básica en Modalidad en Línea", total:79.4, criterios:[78.4,79.0,77.6,79.6,80.0,80.0,79.6,80.0,80.0] },
+          { nombre: "Educación Especial en Modalidad Presencial", total:78.8, criterios:[78.1,78.4,77.0,79.1,80.0,79.5,80.0,80.0,80.0] },
+          { nombre: "Educación Inicial en Modalidad Semipresencial", total:80.8, criterios:[81.8,81.8,81.0,80.0,80.4,80.4,80.2,81.2,80.8] },
+          { nombre: "Educación Inicial en Modalidad en Línea", total:81.4, criterios:[82.0,82.0,81.0,80.0,80.4,80.4,80.0,81.2,80.8] }
+        ]
+      },
+      {
+        nombre: "Facultad de Ciencias Sociales, Educación Comercial y Derecho",
+        carreras: [
+          { nombre: "Contabilidad y Auditoría en Modalidad", total:78.4, criterios:[79.8,79.2,78.4,78.4,78.6,77.2,77.0,78.4,77.4] },
+          { nombre: "Administración de Empresas en Modalidad en Línea", total:80.6, criterios:[79.6,80.0,78.0,80.4,80.0,81.0,81.0,82.0,82.0] },
+          { nombre: "Administración de Empresas en Modalidad Presencial", total:79.8, criterios:[79.8,79.4,78.4,79.6,80.0,80.0,80.0,81.0,81.0] }
+        ]
+      },
+      {
+        nombre: "Facultad de Ciencias de la Salud",
+        carreras: [
+          { nombre: "Enfermería", total:81.6, criterios:[81.0,81.2,78.2,82.4,82.2,80.4,81.8,83.8,83.0] },
+          { nombre: "Medicina", total:82.3, criterios:[81.2,81.8,79.8,82.4,85.2,78.6,83.8,86.8,81.0] }
+        ]
+      }
+    ];
+
+    // Only the detail section is kept: selector de facultad, selector de carrera, barras y radar
+    let radarChartInstance = null;
+    let chartDetalleCriterioInstance = null;
+
+    function cargarSelectorFacultad(){
+      const select = document.getElementById('facultadSelect');
+      select.innerHTML = '';
+      datos.forEach((f, i) => {
+        const o = document.createElement('option');
+        o.value = i;
+        o.text = f.nombre;
+        select.appendChild(o);
+      });
+      select.onchange = cargarDetalleFacultad;
+      // initialize
+      cargarDetalleFacultad();
+    }
+
+    function cargarDetalleFacultad(){
+      const idx = parseInt(document.getElementById('facultadSelect').value || 0, 10);
+      const fac = datos[idx];
+      const cont = document.getElementById('detalleFacultad');
+
+      // table resumen de carreras dentro de la facultad
+      let html = `<table>
+        <thead><tr><th>Carrera</th><th>Total</th></tr></thead><tbody>`;
+      fac.carreras.forEach(c => {
+        html += `<tr><td>${c.nombre}</td><td>${c.total}%</td></tr>`;
+      });
+      html += `</tbody></table>`;
+
+      // combo carrera + charts: BAR (criterios) antes del RADAR
+      html += `
+        <div class="detalle-combos" style="margin-top:10px">
+          <div class="detalle-combo-row">
+            <label style="font-weight:600;">Ver detalle:</label>
+            <select id="carreraSelect" class="combo-grande"></select>
+          </div>
+        </div>
+
+        <div class="chart-block">
+          <h3 style="margin:8px 0 6px 0">Porcentaje por criterio (carrera seleccionada)</h3>
+          <div class="chart-wrapper"><canvas id="chartDetalleCriterio"></canvas></div>
+        </div>
+
+        <div class="chart-block">
+          <h3 style="margin:8px 0 6px 0">Radar (carrera seleccionada)</h3>
+          <div class="chart-wrapper-radar"><canvas id="chartRadar"></canvas></div>
+        </div>
+      `;
+
+      cont.innerHTML = html;
+
+      const selCarrera = document.getElementById('carreraSelect');
+      fac.carreras.forEach((c, i) => {
+        const o = document.createElement('option');
+        o.value = i;
+        o.text = c.nombre;
+        selCarrera.appendChild(o);
+      });
+
+      selCarrera.onchange = function(){
+        cargarGraficoDetalleCriterio(fac);
+        cargarGraficoRadar(fac);
+      };
+
+      // draw initial charts
+      cargarGraficoDetalleCriterio(fac);
+      cargarGraficoRadar(fac);
+    }
+
+    function cargarGraficoDetalleCriterio(fac){
+      const idxCarr = parseInt(document.getElementById('carreraSelect').value || 0, 10);
+      const carrera = fac.carreras[idxCarr];
+      const ctx = document.getElementById('chartDetalleCriterio').getContext('2d');
+
+      const labels = criterios_ajustados.slice(0, carrera.criterios.length);
+      // Convert each label into an array of lines so Chart.js renders them multiline
+      const labelsWrapped = labels.map(l => wrapLabel(l, 16));
+
+      const valores = carrera.criterios.map(v => Number(v));
+
+      if(chartDetalleCriterioInstance) chartDetalleCriterioInstance.destroy();
+
+      chartDetalleCriterioInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          // Chart.js accepts arrays for labels (multiline) so we pass arrays directly
+          labels: labelsWrapped,
+          datasets: [{
+            label: '',
+            data: valores,
+            backgroundColor: 'rgba(252,126,0,0.85)',
+            borderColor: '#fc7e00',
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            valueLabelsFacultades: true
+          },
+          scales: {
+            x: {
+              ticks: {
+                color: "#1c3247",
+                font: { weight: 'bold', size: 12 },
+                autoSkip: false,
+                maxRotation: 0,
+                minRotation: 0
+              }
+            },
+            y: { beginAtZero: true, max: 100, ticks: { color: "#335f7f" } }
+          }
+        },
+        plugins: ['valueLabelsFacultades']
+      });
+    }
+
+    function cargarGraficoRadar(fac){
+      const idxCarr = parseInt(document.getElementById('carreraSelect').value || 0, 10);
+      const carrera = fac.carreras[idxCarr];
+      const ctx = document.getElementById('chartRadar').getContext('2d');
+
+      if (radarChartInstance) radarChartInstance.destroy();
+
+      // For radar, use '\n' to force multiline point labels
+      const labels = criterios_ajustados.slice(0, carrera.criterios.length).map(l => wrapLabel(l, 18).join('\n'));
+
+      radarChartInstance = new Chart(ctx, {
+        type: 'radar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: carrera.nombre,
+            data: carrera.criterios,
+            backgroundColor: "rgba(63,122,160,0.18)",
+            borderColor: "#fc7e00",
+            pointBackgroundColor: "#fc7e00"
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { valueLabelsRadar: true, legend: { display: false } },
+          scales: {
+            r: {
+              angleLines: { color: "#335f7f" },
+              suggestedMin: 60,
+              suggestedMax: 100,
+              pointLabels: { color: "#1c3247", font: { size: 12, weight: 'bold' } }
+            }
+          }
+        },
+        plugins: ['valueLabelsRadar']
+      });
+    }
+
+    // initialize only the detail section
+    cargarSelectorFacultad();
+  </script>
+</body>
+</html>
